@@ -883,6 +883,9 @@ function drawStart() {
   ctx.fillStyle = '#0ff'; ctx.font = '14px Courier New';
   ctx.fillText('⬅➡⬆⬇ / WASD - תנועה    SPACE - ירי    P/ESC - השהה', W/2, H/2 + 55);
   ctx.fillText('Power-ups: 2x ירי כפול  🛡 מגן  ⚡ לייזר  ♥ חיים', W/2, H/2 + 80);
+  // Credits
+  ctx.fillStyle = 'rgba(150,150,150,0.6)'; ctx.font = '11px Courier New';
+  ctx.fillText('created by Yehonatan & Ehud Weinreb', W/2, H - 18);
   // Press start
   if (Math.floor(frameCount/30)%2===0) {
     ctx.fillStyle = '#ff0'; ctx.font = 'bold 24px Courier New';
