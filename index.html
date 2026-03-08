@@ -51,15 +51,16 @@ for (let i = 0; i < 120; i++) {
 // ===== INPUT =====
 const keys = {};
 function togglePause() {
-  if (state === 'playing') { state = 'paused'; bgMusic.pause(); }
+  if (state === 'playing') { state = 'paused'; bgMusic.pause(); resetJoystick(); touchState.fire = false; }
   else if (state === 'paused') { state = 'playing'; bgMusic.play().catch(()=>{}); }
 }
 
 function exitToStart() {
   state = 'start';
   stopMusic();
-  touchState = { left:false, right:false, up:false, down:false, fire:false };
+  touchState.fire = false;
   mouseDown = false;
+  resetJoystick();
 }
 
 window.addEventListener('keydown', e => {
@@ -106,13 +107,36 @@ canvas.addEventListener('mouseleave', () => { mouseDown = false; mouseX = null; 
 
 // ===== TOUCH CONTROLS =====
 const TOUCH_BTNS = {
-  up:    { x: 70,      y: H - 185, w: 70, h: 60 },
-  down:  { x: 70,      y: H - 75,  w: 70, h: 60 },
-  left:  { x: 5,       y: H - 130, w: 65, h: 60 },
-  right: { x: 140,     y: H - 130, w: 65, h: 60 },
   fire:  { x: W - 120, y: H - 85,  w: 110, h: 75 },
   pause: { x: W - 65,  y: 10,      w: 55,  h: 45 },
 };
+
+const joystick = {
+  active: false, touchId: null,
+  baseX: 105, baseY: H - 120, radius: 65,
+  knobX: 105, knobY: H - 120,
+  dx: 0, dy: 0
+};
+
+function resetJoystick() {
+  joystick.active = false; joystick.touchId = null;
+  joystick.knobX = joystick.baseX; joystick.knobY = joystick.baseY;
+  joystick.dx = 0; joystick.dy = 0;
+}
+
+function updateJoystick(tx, ty) {
+  const rect = canvas.getBoundingClientRect();
+  const cx = (tx - rect.left) * (W / rect.width);
+  const cy = (ty - rect.top) * (H / rect.height);
+  const dx = cx - joystick.baseX, dy = cy - joystick.baseY;
+  const dist = Math.sqrt(dx*dx + dy*dy);
+  const clamped = Math.min(dist, joystick.radius);
+  const angle = Math.atan2(dy, dx);
+  joystick.knobX = joystick.baseX + Math.cos(angle) * clamped;
+  joystick.knobY = joystick.baseY + Math.sin(angle) * clamped;
+  joystick.dx = dist > 8 ? (dx / dist) : 0;
+  joystick.dy = dist > 8 ? (dy / dist) : 0;
+}
 
 function getTouchBtn(tx, ty) {
   // tx/ty relative to canvas
@@ -154,19 +178,38 @@ canvas.addEventListener('touchstart', e => {
     }
     return;
   }
-  applyTouches(e.changedTouches, true);
+  for (const t of e.changedTouches) {
+    const btn = getTouchBtn(t.clientX, t.clientY);
+    if (btn === 'fire') { touchState.fire = true; continue; }
+    // Left half of screen = joystick
+    if (!joystick.active) {
+      const rect = canvas.getBoundingClientRect();
+      const cx = (t.clientX - rect.left) * (W / rect.width);
+      if (cx < W / 2) {
+        joystick.active = true; joystick.touchId = t.identifier;
+        updateJoystick(t.clientX, t.clientY);
+      }
+    }
+  }
 }, { passive: false });
 
 canvas.addEventListener('touchmove', e => {
   e.preventDefault();
-  touchState = { left:false, right:false, up:false, down:false, fire:false };
-  applyTouches(e.touches, true);
+  for (const t of e.touches) {
+    if (t.identifier === joystick.touchId) { updateJoystick(t.clientX, t.clientY); continue; }
+    const btn = getTouchBtn(t.clientX, t.clientY);
+    touchState.fire = (btn === 'fire');
+  }
 }, { passive: false });
 
 canvas.addEventListener('touchend', e => {
   e.preventDefault();
-  touchState = { left:false, right:false, up:false, down:false, fire:false };
-  applyTouches(e.touches, true);
+  for (const t of e.changedTouches) {
+    if (t.identifier === joystick.touchId) resetJoystick();
+    if (getTouchBtn(t.clientX, t.clientY) === 'fire') touchState.fire = false;
+  }
+  // If no touches left, reset all
+  if (e.touches.length === 0) { resetJoystick(); touchState.fire = false; }
 }, { passive: false });
 
 // ===== PLAYER =====
@@ -608,10 +651,19 @@ function update() {
     player.y = Math.max(H/2, Math.min(H - player.h/2, player.y));
   }
   // Keyboard movement
-  if ((keys['ArrowLeft'] || keys['KeyA'] || touchState.left) && player.x > player.w/2) player.x -= player.speed;
-  if ((keys['ArrowRight'] || keys['KeyD'] || touchState.right) && player.x < W - player.w/2) player.x += player.speed;
-  if ((keys['ArrowUp'] || keys['KeyW'] || touchState.up) && player.y > H/2) player.y -= player.speed;
-  if ((keys['ArrowDown'] || keys['KeyS'] || touchState.down) && player.y < H - player.h/2) player.y += player.speed;
+  if ((keys['ArrowLeft'] || keys['KeyA']) && player.x > player.w/2) player.x -= player.speed;
+  if ((keys['ArrowRight'] || keys['KeyD']) && player.x < W - player.w/2) player.x += player.speed;
+  if ((keys['ArrowUp'] || keys['KeyW']) && player.y > H/2) player.y -= player.speed;
+  if ((keys['ArrowDown'] || keys['KeyS']) && player.y < H - player.h/2) player.y += player.speed;
+  // Joystick movement
+  if (joystick.active && (joystick.dx !== 0 || joystick.dy !== 0)) {
+    const mag = Math.sqrt(joystick.dx*joystick.dx + joystick.dy*joystick.dy);
+    const pull = Math.min(Math.sqrt((joystick.knobX-joystick.baseX)**2+(joystick.knobY-joystick.baseY)**2) / joystick.radius, 1);
+    player.x += joystick.dx * player.speed * 1.4 * pull;
+    player.y += joystick.dy * player.speed * 1.4 * pull;
+    player.x = Math.max(player.w/2, Math.min(W - player.w/2, player.x));
+    player.y = Math.max(player.h/2, Math.min(H - player.h/2, player.y));
+  }
   if (keys['Space'] || touchState.fire || mouseDown) player.shoot();
   // Floating texts
   floatingTexts.forEach(t => { t.y += t.vy; t.life -= 0.022; });
@@ -971,22 +1023,43 @@ function gameOver() {
 function drawTouchButtons() {
   ctx.save();
   ctx.globalAlpha = 0.55;
+
+  // Fire & Pause buttons
   for (const [name, b] of Object.entries(TOUCH_BTNS)) {
-    const active = touchState[name];
+    const active = name === 'fire' ? touchState.fire : false;
     ctx.fillStyle = active ? 'rgba(0,255,255,0.5)' : 'rgba(255,255,255,0.12)';
     ctx.strokeStyle = active ? '#0ff' : 'rgba(255,255,255,0.4)';
     ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.roundRect(b.x, b.y, b.w, b.h, 10);
-    ctx.fill(); ctx.stroke();
+    ctx.beginPath(); ctx.roundRect(b.x, b.y, b.w, b.h, 10); ctx.fill(); ctx.stroke();
     ctx.fillStyle = active ? '#000' : '#fff';
     ctx.font = 'bold 22px Courier New';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    const labels = { left:'◀', right:'▶', up:'▲', down:'▼', fire:'🔥', pause:'⏸' };
-    ctx.fillText(labels[name], b.x + b.w/2, b.y + b.h/2);
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(name === 'fire' ? '🔥' : '⏸', b.x + b.w/2, b.y + b.h/2);
   }
   ctx.textBaseline = 'alphabetic';
+
+  // Joystick
+  const jx = joystick.baseX, jy = joystick.baseY, jr = joystick.radius;
+  // Base ring
+  ctx.globalAlpha = 0.35;
+  ctx.strokeStyle = 'rgba(255,255,255,0.6)';
+  ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.arc(jx, jy, jr, 0, Math.PI*2); ctx.stroke();
+  // Inner guide ring
+  ctx.strokeStyle = 'rgba(255,255,255,0.2)';
+  ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.arc(jx, jy, jr * 0.5, 0, Math.PI*2); ctx.stroke();
+  // Knob
+  ctx.globalAlpha = joystick.active ? 0.75 : 0.4;
+  ctx.fillStyle = joystick.active ? 'rgba(0,220,255,0.6)' : 'rgba(200,200,200,0.3)';
+  ctx.strokeStyle = joystick.active ? '#0ff' : 'rgba(255,255,255,0.5)';
+  ctx.lineWidth = 2;
+  ctx.shadowColor = joystick.active ? '#0ff' : 'transparent';
+  ctx.shadowBlur = joystick.active ? 12 : 0;
+  ctx.beginPath(); ctx.arc(joystick.knobX, joystick.knobY, 28, 0, Math.PI*2);
+  ctx.fill(); ctx.stroke();
+  ctx.shadowBlur = 0;
+
   ctx.restore();
 }
 
