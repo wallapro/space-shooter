@@ -11,6 +11,8 @@
   #ui { display: flex; justify-content: space-between; width: min(600px, 100vw); padding: 8px 4px; font-size: clamp(12px, 3vw, 16px); }
   .stat { color: #0ff; text-shadow: 0 0 8px #0ff; }
   #message { position: absolute; font-size: 36px; color: #ff0; text-shadow: 0 0 15px #ff0; text-align: center; display: none; }
+  #pauseBtn { position: absolute; top: 56px; right: 4px; background: rgba(0,0,0,0.5); border: 1px solid rgba(255,255,255,0.3); color: #fff; font-size: 18px; padding: 4px 10px; cursor: pointer; border-radius: 6px; display: none; user-select: none; }
+  #pauseBtn:hover { background: rgba(255,255,0,0.2); border-color: #ff0; }
 </style>
 </head>
 <body>
@@ -21,6 +23,7 @@
 </div>
 <canvas id="gameCanvas" width="600" height="700"></canvas>
 <div id="message"></div>
+<button id="pauseBtn">⏸</button>
 
 <script>
 const canvas = document.getElementById('gameCanvas');
@@ -47,17 +50,29 @@ for (let i = 0; i < 120; i++) {
 
 // ===== INPUT =====
 const keys = {};
+function togglePause() {
+  if (state === 'playing') { state = 'paused'; bgMusic.pause(); }
+  else if (state === 'paused') { state = 'playing'; bgMusic.play().catch(()=>{}); }
+}
+
+function exitToStart() {
+  state = 'start';
+  stopMusic();
+  touchState = { left:false, right:false, up:false, down:false, fire:false };
+  mouseDown = false;
+}
+
 window.addEventListener('keydown', e => {
   keys[e.code] = true;
   if (e.code === 'Space') e.preventDefault();
-  audioCtx.resume(); // unlock audio on first interaction
+  audioCtx.resume();
   if (state === 'start' || state === 'gameover' || state === 'victory') {
     if (e.code === 'Enter' || e.code === 'Space') startGame();
   }
-  if (e.code === 'KeyP') {
-    state = (state === 'paused') ? 'playing' : 'paused';
-    if (state === 'paused') bgMusic.pause(); else bgMusic.play().catch(()=>{});
+  if (e.code === 'KeyP' || e.code === 'Escape') {
+    if (state === 'playing' || state === 'paused') togglePause();
   }
+  if (e.code === 'KeyR' && state === 'paused') exitToStart();
 });
 window.addEventListener('keyup', e => keys[e.code] = false);
 
@@ -72,9 +87,17 @@ canvas.addEventListener('mousemove', e => {
 
 canvas.addEventListener('mousedown', e => {
   if (e.button === 0) {
-    mouseDown = true;
     audioCtx.resume();
-    if (state === 'start' || state === 'gameover' || state === 'victory') startGame();
+    if (state === 'start' || state === 'gameover' || state === 'victory') { startGame(); return; }
+    if (state === 'paused') {
+      const rect = canvas.getBoundingClientRect();
+      const cx = (e.clientX - rect.left) * (W / rect.width);
+      const cy = (e.clientY - rect.top) * (H / rect.height);
+      if (cx >= W/2-110 && cx <= W/2+110 && cy >= H/2-15 && cy <= H/2+45) { togglePause(); return; }
+      if (cx >= W/2-110 && cx <= W/2+110 && cy >= H/2+55 && cy <= H/2+115) { exitToStart(); return; }
+      return;
+    }
+    mouseDown = true;
   }
 });
 
@@ -83,10 +106,12 @@ canvas.addEventListener('mouseleave', () => { mouseDown = false; mouseX = null; 
 
 // ===== TOUCH CONTROLS =====
 const TOUCH_BTNS = {
-  left:  { x: 10,      y: H - 85, w: 85, h: 75 },
-  right: { x: 105,     y: H - 85, w: 85, h: 75 },
-  up:    { x: 55,      y: H - 170, w: 75, h: 70 },
-  fire:  { x: W - 120, y: H - 85, w: 110, h: 75 },
+  up:    { x: 70,      y: H - 185, w: 70, h: 60 },
+  down:  { x: 70,      y: H - 75,  w: 70, h: 60 },
+  left:  { x: 5,       y: H - 130, w: 65, h: 60 },
+  right: { x: 140,     y: H - 130, w: 65, h: 60 },
+  fire:  { x: W - 120, y: H - 85,  w: 110, h: 75 },
+  pause: { x: W - 65,  y: 10,      w: 55,  h: 45 },
 };
 
 function getTouchBtn(tx, ty) {
@@ -104,7 +129,7 @@ function getTouchBtn(tx, ty) {
 function applyTouches(touches, active) {
   for (const t of touches) {
     const btn = getTouchBtn(t.clientX, t.clientY);
-    if (btn) touchState[btn] = active;
+    if (btn && btn !== 'pause') touchState[btn] = active;
   }
 }
 
@@ -113,6 +138,22 @@ canvas.addEventListener('touchstart', e => {
   e.preventDefault();
   audioCtx.resume();
   if (state === 'start' || state === 'gameover' || state === 'victory') { startGame(); return; }
+  // Pause button tap
+  for (const t of e.changedTouches) {
+    if (getTouchBtn(t.clientX, t.clientY) === 'pause') { togglePause(); return; }
+  }
+  // Pause screen buttons (resume / exit)
+  if (state === 'paused') {
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = W / rect.width, scaleY = H / rect.height;
+    for (const t of e.changedTouches) {
+      const cx = (t.clientX - rect.left) * scaleX;
+      const cy = (t.clientY - rect.top) * scaleY;
+      if (cx >= W/2-110 && cx <= W/2+110 && cy >= H/2-15 && cy <= H/2+45) { togglePause(); return; }
+      if (cx >= W/2-110 && cx <= W/2+110 && cy >= H/2+55 && cy <= H/2+115) { exitToStart(); return; }
+    }
+    return;
+  }
   applyTouches(e.changedTouches, true);
 }, { passive: false });
 
@@ -793,11 +834,30 @@ function draw() {
   }
 
   if (state === 'paused') {
-    ctx.fillStyle = 'rgba(0,0,0,0.5)';
+    ctx.fillStyle = 'rgba(0,0,0,0.65)';
     ctx.fillRect(0,0,W,H);
     ctx.fillStyle = '#ff0'; ctx.font = 'bold 48px Courier New';
-    ctx.textAlign = 'center'; ctx.fillText('PAUSED', W/2, H/2);
-    ctx.font = '20px Courier New'; ctx.fillText('לחץ P להמשך', W/2, H/2+50);
+    ctx.textAlign = 'center';
+    ctx.shadowColor = '#ff0'; ctx.shadowBlur = 15;
+    ctx.fillText('⏸ PAUSED', W/2, H/2 - 55);
+    ctx.shadowBlur = 0;
+    // Resume button
+    ctx.fillStyle = 'rgba(0,200,0,0.25)';
+    ctx.strokeStyle = '#0f0'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.roundRect(W/2-110, H/2-15, 220, 60, 10); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = '#0f0'; ctx.font = 'bold 24px Courier New';
+    ctx.fillText('▶  המשך', W/2, H/2+25);
+    // Exit button
+    ctx.fillStyle = 'rgba(200,50,50,0.25)';
+    ctx.strokeStyle = '#f44'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.roundRect(W/2-110, H/2+55, 220, 60, 10); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = '#f44'; ctx.font = 'bold 24px Courier New';
+    ctx.fillText('✕  יציאה', W/2, H/2+95);
+    // Keyboard hints (desktop only)
+    if (!isTouchDevice) {
+      ctx.fillStyle = '#888'; ctx.font = '15px Courier New';
+      ctx.fillText('P / ESC — המשך    R — יציאה', W/2, H/2 + 140);
+    }
   }
 }
 
@@ -821,7 +881,7 @@ function drawStart() {
   }
   // Controls
   ctx.fillStyle = '#0ff'; ctx.font = '14px Courier New';
-  ctx.fillText('⬅➡ / WASD - תנועה    SPACE - ירי    P - השהה', W/2, H/2 + 55);
+  ctx.fillText('⬅➡⬆⬇ / WASD - תנועה    SPACE - ירי    P/ESC - השהה', W/2, H/2 + 55);
   ctx.fillText('Power-ups: 2x ירי כפול  🛡 מגן  ⚡ לייזר  ♥ חיים', W/2, H/2 + 80);
   // Press start
   if (Math.floor(frameCount/30)%2===0) {
@@ -920,17 +980,29 @@ function drawTouchButtons() {
     ctx.font = 'bold 22px Courier New';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    const labels = { left:'◀', right:'▶', up:'▲', fire:'🔥' };
+    const labels = { left:'◀', right:'▶', up:'▲', down:'▼', fire:'🔥', pause:'⏸' };
     ctx.fillText(labels[name], b.x + b.w/2, b.y + b.h/2);
   }
   ctx.textBaseline = 'alphabetic';
   ctx.restore();
 }
 
+// ===== PAUSE BUTTON (desktop) =====
+const pauseBtn = document.getElementById('pauseBtn');
+pauseBtn.addEventListener('click', () => {
+  if (state === 'playing' || state === 'paused') togglePause();
+});
+// Show/hide pause button based on state
+function updatePauseBtn() {
+  pauseBtn.style.display = (!isTouchDevice && (state === 'playing' || state === 'paused')) ? 'block' : 'none';
+  pauseBtn.textContent = state === 'paused' ? '▶' : '⏸';
+}
+
 // ===== LOOP =====
 function loop() {
   update();
   draw();
+  updatePauseBtn();
   requestAnimationFrame(loop);
 }
 
