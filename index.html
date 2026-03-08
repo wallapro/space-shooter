@@ -921,9 +921,12 @@ function drawStart() {
   grad.addColorStop(0, '#0ff'); grad.addColorStop(1, '#00f');
   ctx.fillStyle = grad;
   ctx.shadowColor = '#0ff'; ctx.shadowBlur = 20;
-  ctx.fillText('שאגת', W/2, H/2 - 90);
-  ctx.fillText('הארי 🦁', W/2, H/2 - 35);
+  ctx.fillText('שאגת הארי', W/2, H/2 - 65);
   ctx.shadowBlur = 0;
+  // Emoji drawn separately with sans-serif so it renders correctly
+  ctx.font = '44px sans-serif';
+  ctx.fillStyle = '#fff';
+  ctx.fillText('🦁', W/2, H/2 - 15);
   ctx.font = '18px Courier New'; ctx.fillStyle = '#aaa';
   ctx.fillText('הגן על ישראל מפני האיום האיראני!', W/2, H/2 + 10);
   // High score
@@ -936,8 +939,8 @@ function drawStart() {
   ctx.fillText('⬅➡⬆⬇ / WASD - תנועה    SPACE - ירי    P/ESC - השהה', W/2, H/2 + 55);
   ctx.fillText('Power-ups: 2x ירי כפול  🛡 מגן  ⚡ לייזר  ♥ חיים', W/2, H/2 + 80);
   // Credits
-  ctx.fillStyle = 'rgba(150,150,150,0.6)'; ctx.font = '11px Courier New';
-  ctx.fillText('created by Yehonatan & Ehud Weinreb', W/2, H - 18);
+  ctx.fillStyle = 'rgba(210,210,210,0.85)'; ctx.font = 'bold 14px Courier New';
+  ctx.fillText('created by Yehonatan & Ehud Weinreb', W/2, H - 16);
   // Press start
   if (Math.floor(frameCount/30)%2===0) {
     ctx.fillStyle = '#ff0'; ctx.font = 'bold 24px Courier New';
